@@ -37,12 +37,14 @@ def main(args):
                 raise RuntimeError('File name does not match the assumed speaker pattern: {}'.format(basename))
 
             spkrid = m.group(1) 
-
-            with wave.open(path) as wf:
-                nsamples = wf.getnframes()
-                sr = wf.getframerate()
-                dur = nsamples / sr
-                
+            try:
+                with wave.open(path) as wf:
+                    nsamples = wf.getnframes()
+                    sr = wf.getframerate()
+                    dur = nsamples / sr
+            except:
+                print(path)
+                continue
             # Generate segment info for the current file. 
             seg_info = OrderedDict([('utterance_id', uttid),
                                     ('path', path),

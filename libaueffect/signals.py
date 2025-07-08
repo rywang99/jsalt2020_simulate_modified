@@ -32,7 +32,8 @@ def remove_delay_from_rirs(h):
                 delay = np.argmax(h_env)
     for i in range(len(h)):
         h[i] = h[i][:, delay:]
-
+        print(delay, h[i].shape)
+        
     return h
 
 

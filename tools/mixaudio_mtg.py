@@ -73,13 +73,13 @@ def main(args):
                                       save_as_one_file=(not args.save_each_channel_in_onefile))
 
                 # Save the intermediate signals. 
-                for dt in interm.values():
-                    for key in dt:
-                        filename = f"{os.path.splitext(outfile)[0]}_{key}.wav"
-                        libaueffect.write_wav(dt[key], 
-                                              filename, 
-                                              avoid_clipping=False, 
-                                              save_as_one_file=(not args.save_each_channel_in_onefile))
+                # for dt in interm.values():
+                #     for key in dt:
+                #         filename = f"{os.path.splitext(outfile)[0]}_{key}.wav"
+                #         libaueffect.write_wav(dt[key], 
+                #                               filename, 
+                #                               avoid_clipping=False, 
+                #                               save_as_one_file=(not args.save_each_channel_in_onefile))
 
                 input_info = [{'path': os.path.abspath(f['path']), 
                                'speaker_id': f['speaker_id'], 

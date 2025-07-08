@@ -4,6 +4,7 @@ import libaueffect
 import os, copy, scipy, re
 from collections import OrderedDict
 import numpy as np
+import pdb
 
 
 class ReverbMixMeeting(object):
@@ -37,9 +38,15 @@ class ReverbMixMeeting(object):
 
 
     def __call__(self, inputs, offsets, speaker_labels, to_return=('image', 'noise')):
+
         # Determine the number of speakers. 
         spkrs = sorted(list(set(speaker_labels)))
         nspkrs = len(spkrs)
+        print(spkrs)
+        print(nspkrs)
+        # print(self._noise_generator) # None
+        # exit()
+        # pdb.set_trace()
 
         # Generate RIRs. 
         rir, rir_info = self._room_simulator(nspeakers=nspkrs, info_as_display_style=True)
@@ -47,27 +54,38 @@ class ReverbMixMeeting(object):
         spkr2idx = {spkr: i for i, spkr in enumerate(spkrs)}
         rir_info.append( ('speakers', spkrs) )
 
-        # Remove the preceding delay. 
+        # Remove the preceding delay.
+        # print(rir2)
+        rir2 = rir.copy()
         rir = libaueffect.remove_delay_from_rirs(rir)
         nchans = rir[0].shape[0]
+        print('-------------------------------------')
+        print('rir2[0].shape: ', rir2[0].shape)
+        print('rir[0].shape: ', rir[0].shape)
+        #exit()
 
         # Reverberate each segment. 
         z = []
+        e_z = []
         for x, spkr in zip(inputs, speaker_labels):
             h = rir[ spkr2idx[spkr] ]            
             z.append( np.stack([scipy.signal.lfilter(h[j], 1, x) for j in range(nchans)]) )
+            e_z.append(np.stack([scipy.signal.lfilter(h[j][:800], 1, x) for j in range(nchans)]) )
+            print('h[0][:800].shape', h[0][:800].shape)
 
         # Generate the mixture signals. 
         target_len = np.amax([dt.shape[1] + offset for dt, offset in zip(z, offsets)])
 
         s = np.zeros((nspkrs, target_len))  # anechoic signals
         u = np.zeros((nspkrs, nchans, target_len))  # source images
+        e_u = np.zeros((nspkrs, nchans, target_len))  # source images
 
-        for dt, x, offset, spkr in zip(z, inputs, offsets, speaker_labels):
+        for e_dt, dt, x, offset, spkr in zip(e_z, z, inputs, offsets, speaker_labels):
             gain = np.random.uniform(self._gain_range[0], self._gain_range[1])
             gain = 10**(gain / 20)
             s[spkr2idx[spkr], offset : offset + x.shape[0]] += x * gain
             u[spkr2idx[spkr], :, offset : offset + dt.shape[1]] += gain * dt
+            e_u[spkr2idx[spkr], :, offset : offset + e_dt.shape[1]] += gain * e_dt
 
         # # Time-shift and concatenate the utterances of each speaker. 
         # target_len = np.amax([dt.shape[1] + offset for dt, offset in zip(z, offsets)])
@@ -105,8 +123,11 @@ class ReverbMixMeeting(object):
         y *= scale
         n *= scale
         u *= scale
+        e_u *= scale
         for h in rir:
             h *= scale
+        for k in rir2:
+            k *= scale
 
         # description of the mixing process
         params = [('mixer', self.__class__.__name__),
@@ -124,7 +145,13 @@ class ReverbMixMeeting(object):
                     name = f'{wanted}{spkr}'
                     data[name] = u[spkr2idx[spkr]]
                 interm[wanted] = data
-
+            elif wanted == 'early_image':
+                data = {}
+                for spkr in spkrs:
+                    name = f'{wanted}{spkr}'
+                    data[name] = e_u[spkr2idx[spkr]]
+                interm[wanted] = data
+                
             elif wanted == 'noise':
                 data = {wanted: n}
                 interm[wanted] = data
@@ -136,11 +163,18 @@ class ReverbMixMeeting(object):
                     data[name] = rir[spkr2idx[spkr]]
                 interm[wanted] = data
 
+            elif wanted == 'rirnew':
+                data = {}
+                for spkr in spkrs:
+                    name = f'{wanted}{spkr}'
+                    data[name] = rir2[spkr2idx[spkr]]
+                interm[wanted] = data
+
             elif wanted == 'source':
                 data = {}
                 for spkr in spkrs:
                     name = f'{wanted}{spkr}'
                     data[name] = s[spkr2idx[spkr]]
                 interm[wanted] = data
-
         return y, OrderedDict(params), interm
+

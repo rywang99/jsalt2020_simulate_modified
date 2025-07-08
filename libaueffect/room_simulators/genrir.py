@@ -49,9 +49,12 @@ class RandomRirGenerator(object):
 
         # microphone array geometry
         if micarray == 'circular7':
-            self._micarray = np.concatenate([np.zeros((1,3)), np.array([0.0425 * np.array([np.cos(i * np.pi/3), np.sin(i * np.pi/3), 0]) for i in range(6)])])  # 7x3 array
+            self._micarray = np.concatenate([np.zeros((1,3)), np.array([np.random.uniform(0.04, 0.06) * np.array([np.cos(i * np.pi/3), np.sin(i * np.pi/3), 0]) for i in range(6)])])  # 7x3 array
         elif micarray == 'mono':
             self._micarray = np.zeros((1,3))  # 1x3 array
+        elif micarray == 'linear4':
+            ang = np.random.uniform()
+            self._micarray = np.concatenate([np.zeros((1,3)), np.array([np.array([0.037*np.cos(ang), 0.037*np.sin(ang), 0]), np.array([0.076*np.cos(ang), 0.076*np.sin(ang), 0]), np.array([0.226*np.cos(ang), 0.226*np.sin(ang), 0])])])
         else:
             self._micarray = micarray
 
@@ -202,6 +205,7 @@ class RandomRirGenerator(object):
         print('Room dimensions: [{:6.3f} m, {:6.3f} m, {:6.3f} m]'.format(L[0], L[1], L[2]))
         print('T60: {:6.3f} s'.format(rt))
         print('Mic-array: [{:6.3f} m, {:6.3f} m, {:6.3f} m]'.format(r[0], r[1], r[2]))
+        print("R: {:}".format(R))
         
         for i in range(nspeakers):
             print('Speaker {}: [angle, distance from mic (2d), distance from mic (3d), height relative to mic] = [{:6.3f} deg, {:6.3f} m, {:6.3f} m, {:6.3f} m]'.format(i, spkr_locations[i][0], spkr_locations[i][1], spkr_locations[i][2], spkr_locations[i][3]))
@@ -210,6 +214,161 @@ class RandomRirGenerator(object):
         # return
         if info_as_display_style:
             info = [('t60', rt), ('angles', [l[0] for l in spkr_locations])]
+            return h, info
+        else:
+            return h, rt, spkr_locations
+
+
+class RandomRirGenerator2(object):
+    def __init__(self, sound_velocity=340, fs=16000, 
+                 roomdim_range_x=[5, 10], roomdim_range_y=[5, 10], roomdim_range_z=[2.5, 4.5], 
+                 micpos='center', 
+                 roomcenter_mic_dist_max_x=0.5, roomcenter_mic_dist_max_y=0.5, micpos_range_z=[0.6, 0.9], 
+                 corner_mic_dist_max_x=0.03, corner_mic_dist_max_y=0.03, 
+                 spkr_mic_dist_range_x=[0.5, 4], spkr_mic_dist_range_y=[0.5, 4], spkr_mic_dist_range_z=[0.1, 0.5], 
+                 t60_range = [0.1, 0.4], 
+                 min_angle_diff = 30, 
+                 max_angle_diff = 360, 
+                 micarray='circular7'):
+
+        self._sound_velocity = libaueffect.checked_cast(sound_velocity, 'float')
+        self._fs = libaueffect.checked_cast(fs, 'int')
+
+        self._roomdim_range_x = libaueffect.checked_cast_array(roomdim_range_x, 'float', nelems=2)
+        self._roomdim_range_y = libaueffect.checked_cast_array(roomdim_range_y, 'float', nelems=2)
+        self._roomdim_range_z = libaueffect.checked_cast_array(roomdim_range_z, 'float', nelems=2)
+
+        self._micpos = micpos
+        self._roomcenter_mic_dist_max_x = libaueffect.checked_cast(roomcenter_mic_dist_max_x, 'float')
+        self._roomcenter_mic_dist_max_y = libaueffect.checked_cast(roomcenter_mic_dist_max_y, 'float')
+        self._micpos_range_z = libaueffect.checked_cast_array(micpos_range_z, 'float', nelems=2)
+
+        self._corner_mic_dist_max_x = libaueffect.checked_cast(corner_mic_dist_max_x, 'float')
+        self._corner_mic_dist_max_y = libaueffect.checked_cast(corner_mic_dist_max_y, 'float')
+
+        self._spkr_mic_dist_range_x = libaueffect.checked_cast_array(spkr_mic_dist_range_x, 'float', nelems=2)
+        self._spkr_mic_dist_range_y = libaueffect.checked_cast_array(spkr_mic_dist_range_y, 'float', nelems=2)
+        self._spkr_mic_dist_range_z = libaueffect.checked_cast_array(spkr_mic_dist_range_z, 'float', nelems=2)
+
+        self._t60_range = libaueffect.checked_cast_array(t60_range, 'float', nelems=2)
+
+        self._min_angle_diff = libaueffect.checked_cast(min_angle_diff, 'float')
+        self._max_angle_diff = libaueffect.checked_cast(max_angle_diff, 'float')
+
+        if self._min_angle_diff >= self._max_angle_diff:
+            raise ValueError('min_angle_diff (given: {}) must be smaller than max_angle_diff (given: {}).'.format(self._min_angle_diff, self._max_angle_diff))
+
+        # microphone array geometry
+        self.micarray = micarray
+
+        print('Instantiating {}'.format(self.__class__.__name__))
+        print('Sound velocity: {}'.format(self._sound_velocity))
+        print('Sampling frequency: {}'.format(self._fs))
+
+        print('Room dimension range (x): {}'.format(self._roomdim_range_x))
+        print('Room dimension range (y): {}'.format(self._roomdim_range_y))
+        print('Room dimension range (z): {}'.format(self._roomdim_range_z))
+
+        print('Mic positioning scheme: {}'.format(self._micpos))
+
+        if self._micpos == 'center':
+            print('Max distance between room center and mic (x): {}'.format(self._roomcenter_mic_dist_max_x))
+            print('Max distance between room center and mic (y): {}'.format(self._roomcenter_mic_dist_max_y))
+            print('Mic position range (z): {}'.format(self._micpos_range_z))
+        elif self._micpos == 'corner':
+            print('Max distance between room corner and mic (x): {}'.format(self._corner_mic_dist_max_x))
+            print('Max distance between room corner and mic (y): {}'.format(self._corner_mic_dist_max_y))
+            print('Mic position range (z): {}'.format(self._micpos_range_z))
+
+
+        print('Speaker-mic distance range (x): {}'.format(self._spkr_mic_dist_range_x))
+        print('Speaker-mic distance range (y): {}'.format(self._spkr_mic_dist_range_y))
+        print('Speaker-mic distance range (z): {}'.format(self._spkr_mic_dist_range_z))
+
+        print('T60 range (z): {}'.format(self._t60_range))
+
+        print('Minimum angle difference between two sources: {}'.format(self._min_angle_diff))
+        print('Maximum angle difference between two sources: {}'.format(self._max_angle_diff))
+
+        print('Mic array geometry: {}'.format(micarray))
+
+        print('', flush=True)
+
+
+
+    def __call__(self, nspeakers=2, info_as_display_style=False):
+        success = False
+        
+        while not success:
+            # Randomly sample room dimensions. 
+            L = np.array([np.random.uniform(*self._roomdim_range_x), 
+                          np.random.uniform(*self._roomdim_range_y), 
+                          np.random.uniform(*self._roomdim_range_z)])
+
+            # Randomly sample T60. 
+            rt = np.random.uniform(*self._t60_range)
+            rirlen = int(rt * self._fs)
+
+            # validity check
+            V = np.prod(L)
+            S = 2 * (L[0]*L[2] + L[1]*L[2] + L[0]*L[1])
+            alpha = 24 * V * np.log(10) / (self._sound_velocity * S * rt)
+            if alpha < 1:
+                success = True
+
+        # Randomly sample a mic array location.
+        R = [] 
+        for i in range(self.micarray):
+            r = np.array([np.random.uniform(0, L[0]),
+                          np.random.uniform(0, L[1]),
+                          np.random.uniform(*self._micpos_range_z)])
+            R.append(r)
+        R = np.vstack(R)
+
+
+        speakers = []
+        h = []
+        spkr_locations = []
+        for i in range(nspeakers):
+            max_trials = 1000
+            
+            for trial in range(max_trials):
+                # Randomly draw a speaker location.
+                s = np.array([ np.random.uniform(0, L[0]), np.random.uniform(0, L[1]), np.random.uniform(0.5, 1.8)])
+                
+                valid = True
+                for spk in speakers:
+                    if np.sqrt(np.sum(np.square(s[:2] -spk[:2]))) < 0.3:
+                        valid = False
+                if valid:
+                    break
+
+            if not valid:
+                raise RuntimeError('Failed to generate valid RIRs.')
+            # print('Tried {} times.'.format(trial))
+
+            speakers.append(s)
+
+            h0 = np.array(pyrirgen.generateRir(L, s, R, soundVelocity=self._sound_velocity, fs=self._fs, reverbTime=rt, nSamples=rirlen))
+
+            #import matplotlib.pyplot as plt
+            #plt.figure()
+            #plt.plot(h0[0])
+            #plt.show()
+       
+            h.append(h0)
+        # Print the simulated enviroment. 
+        print('Room dimensions: [{:6.3f} m, {:6.3f} m, {:6.3f} m]'.format(L[0], L[1], L[2]))
+        print('T60: {:6.3f} s'.format(rt))
+        print('Mic: {:}'.format(R))
+        
+        for i in range(nspeakers):
+            print('Speaker {}: [distance from mic (3d), height relative to mic] = {:6.3f} m, {:6.3f} m, {:6.3f} m]'.format(i, speakers[i][0], speakers[i][1], speakers[i][2]))
+        print('', flush=True)
+
+        # return
+        if info_as_display_style:
+            info = [('t60', rt)]
             return h, info
         else:
             return h, rt, spkr_locations

@@ -1,0 +1,25 @@
+{
+  "probabilities": {
+    "cfg1": 0.5,
+    "cfg2": 0.5
+  },
+
+  "configurations": {
+    "cfg1": {
+      "speakers_per_session": [2], 
+      "utterances_per_speaker": [5], 
+      "overlap_time_ratio": [0.7, 0.99], 
+      "silence_probability": 0.0,  
+      "silence_duration": [0.6, 2.0], 
+      "allow_3fold_overlap": true
+    },
+    "cfg2": {
+      "speakers_per_session": [3], 
+      "utterances_per_speaker": [5], 
+      "overlap_time_ratio": [0.7, 0.99], 
+      "silence_probability": 0.0,  
+      "silence_duration": [0.6, 2.0], 
+      "allow_3fold_overlap": true
+    }
+  }
+}
